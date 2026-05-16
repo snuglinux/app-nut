@@ -20,8 +20,8 @@ It provides a friendly Webconfig interface for USB UPS detection, NUT configurat
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/snuglinux/app-nut/main/images/screenshot-1.png" alt="app-nut ClearOS dashboard" width="42%">
-  <img src="https://raw.githubusercontent.com/snuglinux/app-nut/main/images/screenshot-2.png" alt="app-nut ClearOS settings" width="42%">
+  <img src="images/app-nut-1.png" alt="app-nut ClearOS dashboard" width="45%">
+  <img src="images/app-nut-2.png" alt="app-nut ClearOS settings" width="45%">
 </p>
 
 ---
