@@ -20,8 +20,8 @@ It provides a friendly Webconfig interface for USB UPS detection, NUT configurat
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="images/screenshot-1.png" alt="app-nut ClearOS dashboard" width="48%">
-  <img src="images/screenshot-2.png" alt="app-nut ClearOS settings" width="48%">
+  <img src="https://raw.githubusercontent.com/snuglinux/app-nut/main/images/screenshot-1.png" alt="app-nut ClearOS dashboard" width="42%">
+  <img src="https://raw.githubusercontent.com/snuglinux/app-nut/main/images/screenshot-2.png" alt="app-nut ClearOS settings" width="42%">
 </p>
 
 ---
@@ -80,8 +80,6 @@ app-nut can log selected `upsmon` events into a local app-owned log:
 ```text
 /var/clearos/nut/events.log
 ```
-
-The event log stores stable technical event codes and runtime UPS values. Human-readable messages are translated in Webconfig according to the selected user language.
 
 Supported event types include:
 
