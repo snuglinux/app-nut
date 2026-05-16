@@ -1,0 +1,19 @@
+#!/bin/sh
+# Simple USB detector for app-nut. Output: vendorid:productid<TAB>description
+
+if ! command -v lsusb >/dev/null 2>&1; then
+    echo "ERROR: lsusb not found" >&2
+    exit 1
+fi
+
+lsusb | awk '
+{
+    bus=$2; dev=$4; gsub(":", "", dev);
+    id=$6;
+    label=$0;
+    if (id ~ /^1d6b:/ && label ~ /root hub/)
+        next;
+    $1=$2=$3=$4=$5=$6="";
+    sub(/^[[:space:]]+/, "");
+    print id "\tBus " bus " Device " dev " - " $0;
+}'

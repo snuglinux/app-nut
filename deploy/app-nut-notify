@@ -1,0 +1,160 @@
+#!/bin/sh
+#
+# app-nut-notify
+#
+# NUT upsmon NOTIFYCMD helper for app-nut.
+# It writes local JSON-lines event records for later Webconfig analysis.
+#
+# Important:
+# - This is not a Webconfig sudo/helper command.
+# - It is called by upsmon when NOTIFYFLAG contains EXEC.
+# - It must never block shutdown or break upsmon, so errors exit 0.
+#
+
+CONFIG="/etc/clearos/nut.conf"
+
+# Defaults. Values can be overridden by /etc/clearos/nut.conf.
+EVENT_LOG_ENABLED="${EVENT_LOG_ENABLED:-0}"
+EVENT_LOG_FILE="${EVENT_LOG_FILE:-/var/clearos/nut/events.log}"
+EVENT_LOG_RETENTION_DAYS="${EVENT_LOG_RETENTION_DAYS:-30}"
+EVENT_LOG_MAX_SIZE_MB="${EVENT_LOG_MAX_SIZE_MB:-5}"
+
+# shellcheck disable=SC1090
+if [ -r "$CONFIG" ]; then
+    . "$CONFIG" 2>/dev/null || true
+fi
+
+[ "$EVENT_LOG_ENABLED" = "1" ] || exit 0
+
+case "$EVENT_LOG_FILE" in
+    /var/clearos/nut/*) ;;
+    *) EVENT_LOG_FILE="/var/clearos/nut/events.log" ;;
+esac
+
+case "$EVENT_LOG_RETENTION_DAYS" in
+    ''|*[!0-9]*) EVENT_LOG_RETENTION_DAYS=30 ;;
+esac
+case "$EVENT_LOG_MAX_SIZE_MB" in
+    ''|*[!0-9]*) EVENT_LOG_MAX_SIZE_MB=5 ;;
+esac
+
+[ "$EVENT_LOG_RETENTION_DAYS" -ge 1 ] 2>/dev/null || EVENT_LOG_RETENTION_DAYS=30
+[ "$EVENT_LOG_RETENTION_DAYS" -le 3650 ] 2>/dev/null || EVENT_LOG_RETENTION_DAYS=3650
+[ "$EVENT_LOG_MAX_SIZE_MB" -ge 1 ] 2>/dev/null || EVENT_LOG_MAX_SIZE_MB=5
+[ "$EVENT_LOG_MAX_SIZE_MB" -le 1024 ] 2>/dev/null || EVENT_LOG_MAX_SIZE_MB=1024
+
+LOG_DIR=$(dirname "$EVENT_LOG_FILE")
+LOG_BASE=$(basename "$EVENT_LOG_FILE")
+
+mkdir -p "$LOG_DIR" 2>/dev/null || exit 0
+
+if getent group nut >/dev/null 2>&1; then
+    chown root:nut "$LOG_DIR" 2>/dev/null || true
+    chmod 0770 "$LOG_DIR" 2>/dev/null || true
+fi
+
+touch "$EVENT_LOG_FILE" 2>/dev/null || exit 0
+if getent group nut >/dev/null 2>&1; then
+    chown root:nut "$EVENT_LOG_FILE" 2>/dev/null || true
+    chmod 0660 "$EVENT_LOG_FILE" 2>/dev/null || true
+fi
+
+cleanup_log() {
+    # Remove old rotated logs by mtime.
+    find "$LOG_DIR" -name "$LOG_BASE.*" -type f -mtime +"$EVENT_LOG_RETENTION_DAYS" -delete 2>/dev/null || true
+
+    # Keep active JSON-lines log within retention window when GNU date is available.
+    cutoff=$(date -d "$EVENT_LOG_RETENTION_DAYS days ago" '+%Y-%m-%dT%H:%M:%S' 2>/dev/null || true)
+    if [ -n "$cutoff" ] && [ -s "$EVENT_LOG_FILE" ]; then
+        tmp="${EVENT_LOG_FILE}.$$"
+        awk -v cutoff="$cutoff" '
+            {
+                t=$0
+                sub(/^.*"time":"?/, "", t)
+                sub(/".*$/, "", t)
+                if (substr(t, 1, 19) >= cutoff)
+                    print $0
+            }
+        ' "$EVENT_LOG_FILE" > "$tmp" 2>/dev/null && cat "$tmp" > "$EVENT_LOG_FILE"
+        rm -f "$tmp" 2>/dev/null || true
+    fi
+
+    # Rotate by size after retention cleanup.
+    max_bytes=$((EVENT_LOG_MAX_SIZE_MB * 1024 * 1024))
+    size=$(wc -c < "$EVENT_LOG_FILE" 2>/dev/null || echo 0)
+    if [ "$size" -gt "$max_bytes" ] 2>/dev/null; then
+        rotated="${EVENT_LOG_FILE}.$(date +%Y%m%d-%H%M%S)"
+        mv "$EVENT_LOG_FILE" "$rotated" 2>/dev/null || true
+        touch "$EVENT_LOG_FILE" 2>/dev/null || true
+        if getent group nut >/dev/null 2>&1; then
+            chown root:nut "$EVENT_LOG_FILE" "$rotated" 2>/dev/null || true
+            chmod 0660 "$EVENT_LOG_FILE" "$rotated" 2>/dev/null || true
+        fi
+    fi
+}
+
+json_escape() {
+    printf '%s' "$1" \
+        | tr '\r\n' '  ' \
+        | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/ /g'
+}
+
+get_upsc_value() {
+    key="$1"
+    [ -n "$UPS_NAME" ] || return 0
+    [ -n "$UPSC" ] || return 0
+
+    "$UPSC" "$UPS_NAME" 2>/dev/null | awk -F': ' -v key="$key" '$1 == key { print $2; exit }'
+}
+
+cleanup_log
+
+EVENT="${NOTIFYTYPE:-${1:-UNKNOWN}}"
+UPS_NAME="${UPSNAME:-${UPS:-}}"
+
+[ -n "$UPS_NAME" ] || UPS_NAME="unknown"
+
+EVENT_LC=$(printf '%s' "$EVENT" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_]/_/g')
+MESSAGE_KEY="nut_event_message_${EVENT_LC}"
+
+case "$EVENT" in
+    ONLINE|COMMOK) LEVEL="info" ;;
+    ONBATT|COMMBAD|REPLBATT) LEVEL="warning" ;;
+    LOWBATT|FSD|SHUTDOWN|NOCOMM) LEVEL="critical" ;;
+    *) LEVEL="info" ;;
+esac
+
+UPSC=""
+if command -v upsc >/dev/null 2>&1; then
+    UPSC=$(command -v upsc)
+elif [ -x /bin/upsc ]; then
+    UPSC=/bin/upsc
+elif [ -x /usr/bin/upsc ]; then
+    UPSC=/usr/bin/upsc
+fi
+
+UPS_STATUS=$(get_upsc_value "ups.status")
+BATTERY_CHARGE=$(get_upsc_value "battery.charge")
+BATTERY_RUNTIME=$(get_upsc_value "battery.runtime")
+UPS_LOAD=$(get_upsc_value "ups.load")
+INPUT_VOLTAGE=$(get_upsc_value "input.voltage")
+OUTPUT_VOLTAGE=$(get_upsc_value "output.voltage")
+BATTERY_TEMPERATURE=$(get_upsc_value "battery.temperature")
+
+TIME=$(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S%z')
+
+printf '{"time":"%s","event":"%s","level":"%s","ups":"%s","message_key":"%s","ups_status":"%s","battery_charge":"%s","battery_runtime":"%s","ups_load":"%s","input_voltage":"%s","output_voltage":"%s","battery_temperature":"%s"}\n' \
+    "$(json_escape "$TIME")" \
+    "$(json_escape "$EVENT")" \
+    "$(json_escape "$LEVEL")" \
+    "$(json_escape "$UPS_NAME")" \
+    "$(json_escape "$MESSAGE_KEY")" \
+    "$(json_escape "$UPS_STATUS")" \
+    "$(json_escape "$BATTERY_CHARGE")" \
+    "$(json_escape "$BATTERY_RUNTIME")" \
+    "$(json_escape "$UPS_LOAD")" \
+    "$(json_escape "$INPUT_VOLTAGE")" \
+    "$(json_escape "$OUTPUT_VOLTAGE")" \
+    "$(json_escape "$BATTERY_TEMPERATURE")" >> "$EVENT_LOG_FILE" 2>/dev/null || true
+
+exit 0

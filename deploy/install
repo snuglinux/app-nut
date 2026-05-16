@@ -1,0 +1,128 @@
+#!/bin/sh
+
+# app-nut package install/upgrade preparation.
+#
+# Important:
+# - /etc/ups belongs to the NUT package, not to app-nut.
+# - Do not install private privileged helpers from here.
+# - Do not write active NUT configuration from package scripts.
+# - Only prepare app-owned state, normalize existing NUT permissions, and
+#   register real system commands that Webconfig needs via ClearOS addsudo.
+
+logger -p local6.notice -t installer "app-nut-core - package preparation"
+
+# Webconfig uses standard ClearOS privileged commands through app-base
+# (/usr/bin/systemctl, /sbin/service, /bin/mkdir, /bin/chown, /bin/chmod).
+# Do not register or call a private app-nut helper here.
+# Do not register /usr/sbin/upsdrvctl: driver control is performed through
+# the real NUT systemd instance unit nut-driver@UPS_NAME.service.
+
+# app-nut private state.
+mkdir -p /var/clearos/nut /var/clearos/nut/backup 2>/dev/null || true
+if getent group nut >/dev/null 2>&1; then
+    chown root:nut /var/clearos/nut 2>/dev/null || true
+    chmod 0770 /var/clearos/nut 2>/dev/null || true
+    touch /var/clearos/nut/events.log 2>/dev/null || true
+    chown root:nut /var/clearos/nut/events.log 2>/dev/null || true
+    chmod 0660 /var/clearos/nut/events.log 2>/dev/null || true
+else
+    chown root:root /var/clearos/nut 2>/dev/null || true
+    chmod 0755 /var/clearos/nut 2>/dev/null || true
+    touch /var/clearos/nut/events.log 2>/dev/null || true
+    chown root:root /var/clearos/nut/events.log 2>/dev/null || true
+    chmod 0644 /var/clearos/nut/events.log 2>/dev/null || true
+fi
+chown root:root /var/clearos/nut/backup 2>/dev/null || true
+chmod 0755 /var/clearos/nut/backup 2>/dev/null || true
+
+# app-nut settings file.  Create only if missing.  Do not overwrite local state.
+if [ ! -e /etc/clearos/nut.conf ]; then
+    logger -p local6.notice -t installer "app-nut-core - creating default /etc/clearos/nut.conf"
+    cat > /etc/clearos/nut.conf <<'CONFEOF'
+# ClearOS app-nut default settings
+# Local USB UPS only, no firewall, no Zabbix.
+
+ENABLED="0"
+MODE="standalone"
+UPSD_LISTEN_ADDRESS="127.0.0.1"
+UPSD_LISTEN_PORT="3493"
+UPSD_LISTEN_COUNT="1"
+UPSD_LISTEN_1_ADDRESS="127.0.0.1"
+UPSD_LISTEN_1_PORT="3493"
+ALLOW_NO_DEVICE="0"
+ALLOW_NOT_ALL_LISTENERS="0"
+DEBUG_MIN="0"
+UPSMON_MINSUPPLIES="1"
+UPSMON_SHUTDOWNCMD="/sbin/shutdown -h +0"
+UPSMON_POLLFREQ="5"
+UPSMON_POLLFREQALERT="5"
+UPSMON_HOSTSYNC="15"
+UPSMON_DEADTIME="15"
+UPSMON_POWERDOWNFLAG="/etc/killpower"
+UPSMON_FINALDELAY="5"
+EVENT_LOG_ENABLED="0"
+EVENT_LOG_FILE="/var/clearos/nut/events.log"
+EVENT_LOG_RETENTION_DAYS="30"
+EVENT_LOG_MAX_SIZE_MB="5"
+EVENT_LOG_SYSLOG_ENABLED="1"
+EVENT_LOG_EVENTS="ONLINE,ONBATT,LOWBATT,FSD,SHUTDOWN,COMMOK,COMMBAD,NOCOMM,REPLBATT"
+UPSMON_USER="upsmon-local"
+UPSMON_PASSWORD=""
+UPSD_USER_COUNT="1"
+UPSD_USER_1_USERNAME="upsmon-local"
+UPSD_USER_1_PASSWORD=""
+UPSD_USER_1_ROLE="upsmon_primary"
+UPS_COUNT="0"
+
+# Compatibility fields for app-nut <= 0.1.3
+UPS_NAME=""
+DRIVER="usbhid-ups"
+PORT="auto"
+VENDORID=""
+PRODUCTID=""
+SERIAL=""
+DESC="USB UPS"
+CONFEOF
+fi
+chown root:root /etc/clearos/nut.conf 2>/dev/null || true
+chmod 0600 /etc/clearos/nut.conf 2>/dev/null || true
+
+# /etc/ups and NUT config files are installed by the nut package.  If they are
+# present, normalize permissions so upsd/usbhid-ups can read them.  Do not
+# create empty /etc/ups/*.conf files here.
+if [ -d /etc/ups ] && getent group nut >/dev/null 2>&1; then
+    chown root:nut /etc/ups 2>/dev/null || true
+    chmod 0750 /etc/ups 2>/dev/null || true
+
+    for f in /etc/ups/nut.conf /etc/ups/ups.conf /etc/ups/upsd.conf /etc/ups/upsd.users /etc/ups/upsmon.conf; do
+        if [ -e "$f" ]; then
+            chown root:nut "$f" 2>/dev/null || true
+            chmod 0640 "$f" 2>/dev/null || true
+        fi
+    done
+fi
+
+# Runtime directory.  This is not persistent NUT configuration; it can disappear
+# after reboot.  Creating it here prevents startup failures before systemd
+# tmpfiles runs.
+mkdir -p /run/nut /var/run/nut 2>/dev/null || true
+if getent passwd nut >/dev/null 2>&1 && getent group nut >/dev/null 2>&1; then
+    chown nut:nut /run/nut /var/run/nut 2>/dev/null || true
+    chmod 0770 /run/nut /var/run/nut 2>/dev/null || true
+else
+    chmod 0755 /run/nut /var/run/nut 2>/dev/null || true
+fi
+
+# Some NUT service files call systemd-tmpfiles for this path.  Create only the
+# tmpfiles rule; do not touch firewall, Zabbix, or active NUT configs.
+mkdir -p /etc/tmpfiles.d 2>/dev/null || true
+if [ ! -e /etc/tmpfiles.d/nut-run.conf ]; then
+    cat > /etc/tmpfiles.d/nut-run.conf <<'CONFEOF'
+d /run/nut 0770 nut nut -
+CONFEOF
+fi
+chown root:root /etc/tmpfiles.d/nut-run.conf 2>/dev/null || true
+chmod 0644 /etc/tmpfiles.d/nut-run.conf 2>/dev/null || true
+systemd-tmpfiles --create /etc/tmpfiles.d/nut-run.conf >/dev/null 2>&1 || true
+
+exit 0

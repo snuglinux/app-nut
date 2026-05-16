@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Intentionally conservative: do not remove /etc/ups/* or stop NUT.
+# UPS configuration can be safety-critical and may be used outside Webconfig.
+exit 0
