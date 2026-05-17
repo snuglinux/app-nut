@@ -2431,11 +2431,12 @@ class NUT extends Daemon
     {
         clearos_profile(__METHOD__, __LINE__);
 
-        // If the same UPS was configured manually before app-nut was installed,
-        // remove the unmanaged duplicate section first.  NUT does not like two
-        // sections with the same [ups-name].  A backup is already created before
-        // this method is called from apply_configuration().
-        $this->_remove_conflicting_unmanaged_ups_sections(self::FILE_UPS_CONF, $devices, 0640);
+        // app-nut manages the local USB UPS sections in ups.conf.  Old manual
+        // sections, for example [ups-gateway23], are not visible in the
+        // Webconfig device list and must not remain next to the managed block.
+        // A backup is already created before this method is called from
+        // apply_configuration().
+        $this->_remove_unmanaged_ups_sections(self::FILE_UPS_CONF, 0640);
 
         $block = $this->_build_ups_conf_block($devices);
 
@@ -3043,16 +3044,9 @@ class NUT extends Daemon
     }
 
 
-    protected function _remove_conflicting_unmanaged_ups_sections($file, $devices, $mode)
+    protected function _remove_unmanaged_ups_sections($file, $mode)
     {
         clearos_profile(__METHOD__, __LINE__);
-
-        $names = array();
-        foreach ($devices as $device)
-            $names[$device['UPS_NAME']] = TRUE;
-
-        if (count($names) === 0)
-            return;
 
         $contents = $this->_read_full_file($file);
         if ($contents === '')
@@ -3079,12 +3073,11 @@ class NUT extends Daemon
                 continue;
             }
 
-            $matches = array();
-            if (! $inside_managed && preg_match('/^\[([A-Za-z0-9][A-Za-z0-9_-]{0,63})\]\s*$/', $trimmed, $matches) && isset($names[$matches[1]])) {
+            if (! $inside_managed && preg_match('/^\[([A-Za-z0-9][A-Za-z0-9_-]{0,63})\]\s*$/', $trimmed)) {
                 $changed = TRUE;
 
-                // Skip this unmanaged UPS section until the next section header
-                // or until the managed app-nut block starts.
+                // Skip this old unmanaged UPS section until the next section
+                // header or until the managed app-nut block starts.
                 while (($i + 1) < count($lines)) {
                     $next = trim($lines[$i + 1]);
                     if (preg_match('/^\[[^\]]+\]\s*$/', $next) || $next === '# BEGIN app-nut usb-ups')

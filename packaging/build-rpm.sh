@@ -4,8 +4,8 @@
 #
 # Usage:
 #   ./build-rpm.sh
-#   VERSION=0.1.56 ./build-rpm.sh
-#   RELEASE=4 ./build-rpm.sh
+#   VERSION=0.1.57 ./build-rpm.sh
+#   RELEASE=1 ./build-rpm.sh
 #   TOPDIR=/tmp/rpmbuild ./build-rpm.sh
 #
 # The script downloads the GitHub release archive and builds the RPM using
@@ -19,8 +19,8 @@
 set -euo pipefail
 
 PKG_NAME="app-nut"
-VERSION="${VERSION:-0.1.56}"
-RELEASE="${RELEASE:-4}"
+VERSION="${VERSION:-0.1.57}"
+RELEASE="${RELEASE:-1}"
 TOPDIR="${TOPDIR:-$HOME/rpmbuild}"
 SPEC_FILE="${SPEC_FILE:-$(pwd)/app-nut.spec}"
 SOURCE_URL="${SOURCE_URL:-https://github.com/snuglinux/app-nut/archive/refs/tags/${VERSION}.tar.gz}"

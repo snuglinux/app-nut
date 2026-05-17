@@ -1,6 +1,6 @@
 Name:           app-nut
-Version:        0.1.56
-Release:        4%{?dist}
+Version:        0.1.57
+Release:        1%{?dist}
 Summary:        ClearOS Network UPS Tools web interface
 
 License:        GPLv3
@@ -91,6 +91,11 @@ fi
 %ghost %config(noreplace) %attr(0644,root,root) /etc/tmpfiles.d/nut-run.conf
 
 %changelog
+* Sun May 17 2026 SnugLinux <snuglinux@users.noreply.github.com> - 0.1.57-1
+- Keep /var/clearos/nut traversable by Webconfig during install/upgrade.
+- Remove old unmanaged UPS sections from ups.conf before writing the app-nut managed USB UPS block.
+- Keep ClearOS daemon descriptors out of the RPM and keep explicit NUT runtime requirements.
+
 * Sun May 17 2026 SnugLinux <snuglinux@users.noreply.github.com> - 0.1.56-4
 - Require the full NUT runtime explicitly: nut >= 2.8.0 and nut-client >= 2.8.0.
 - Add post-install runtime dependency ordering for nut, nut-client and systemd.
