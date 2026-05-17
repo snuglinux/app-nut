@@ -11,7 +11,8 @@ require_once $bootstrap . '/bootstrap.php';
 // D E P E N D E N C I E S
 ///////////////////////////////////////////////////////////////////////////////
 
-require clearos_app_base('base') . '/deploy/daemon.php';
+use \clearos\apps\base\Daemon as Daemon;
+clearos_load_library('base/Daemon');
 
 ///////////////////////////////////////////////////////////////////////////////
 // M A I N

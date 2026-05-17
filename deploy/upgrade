@@ -7,35 +7,40 @@
 # - Do not install private privileged helpers from here.
 # - Do not write active NUT configuration from package scripts.
 # - Only prepare app-owned state, normalize existing NUT permissions, and
-#   register real system commands that Webconfig needs via ClearOS addsudo.
+#   create the runtime directory/tmpfiles rule needed by NUT.
+# - /var/clearos/nut must be traversable by Webconfig. Do not make it
+#   root:nut 0770, otherwise Webconfig cannot see /var/clearos/nut/backup.
 
 logger -p local6.notice -t installer "app-nut-core - package preparation"
 
-# Webconfig uses standard ClearOS privileged commands through app-base
-# (/usr/bin/systemctl, /sbin/service, /bin/mkdir, /bin/chown, /bin/chmod).
-# Do not register or call a private app-nut helper here.
-# Do not register /usr/sbin/upsdrvctl: driver control is performed through
-# the real NUT systemd instance unit nut-driver@UPS_NAME.service.
+# The RPM should pull in nut and nut-client. Keep this as a defensive log only
+# for manual --nodeps installs or broken repositories.
+if ! rpm -q nut >/dev/null 2>&1; then
+    logger -p local6.warning -t installer "app-nut-core - package nut is not installed"
+fi
+if ! rpm -q nut-client >/dev/null 2>&1; then
+    logger -p local6.warning -t installer "app-nut-core - package nut-client is not installed"
+fi
 
 # app-nut private state.
 mkdir -p /var/clearos/nut /var/clearos/nut/backup 2>/dev/null || true
-if getent group nut >/dev/null 2>&1; then
-    chown root:nut /var/clearos/nut 2>/dev/null || true
-    chmod 0770 /var/clearos/nut 2>/dev/null || true
-    touch /var/clearos/nut/events.log 2>/dev/null || true
-    chown root:nut /var/clearos/nut/events.log 2>/dev/null || true
-    chmod 0660 /var/clearos/nut/events.log 2>/dev/null || true
-else
-    chown root:root /var/clearos/nut 2>/dev/null || true
-    chmod 0755 /var/clearos/nut 2>/dev/null || true
-    touch /var/clearos/nut/events.log 2>/dev/null || true
-    chown root:root /var/clearos/nut/events.log 2>/dev/null || true
-    chmod 0644 /var/clearos/nut/events.log 2>/dev/null || true
-fi
+
+chown root:root /var/clearos/nut 2>/dev/null || true
+chmod 0755 /var/clearos/nut 2>/dev/null || true
+
 chown root:root /var/clearos/nut/backup 2>/dev/null || true
 chmod 0755 /var/clearos/nut/backup 2>/dev/null || true
 
-# app-nut settings file.  Create only if missing.  Do not overwrite local state.
+touch /var/clearos/nut/events.log 2>/dev/null || true
+if getent group nut >/dev/null 2>&1; then
+    chown root:nut /var/clearos/nut/events.log 2>/dev/null || true
+    chmod 0660 /var/clearos/nut/events.log 2>/dev/null || true
+else
+    chown root:root /var/clearos/nut/events.log 2>/dev/null || true
+    chmod 0644 /var/clearos/nut/events.log 2>/dev/null || true
+fi
+
+# app-nut settings file. Create only if missing. Do not overwrite local state.
 if [ ! -e /etc/clearos/nut.conf ]; then
     logger -p local6.notice -t installer "app-nut-core - creating default /etc/clearos/nut.conf"
     cat > /etc/clearos/nut.conf <<'CONFEOF'
@@ -87,8 +92,8 @@ fi
 chown root:root /etc/clearos/nut.conf 2>/dev/null || true
 chmod 0600 /etc/clearos/nut.conf 2>/dev/null || true
 
-# /etc/ups and NUT config files are installed by the nut package.  If they are
-# present, normalize permissions so upsd/usbhid-ups can read them.  Do not
+# /etc/ups and NUT config files are installed by the nut package. If they are
+# present, normalize permissions so upsd/usbhid-ups can read them. Do not
 # create empty /etc/ups/*.conf files here.
 if [ -d /etc/ups ] && getent group nut >/dev/null 2>&1; then
     chown root:nut /etc/ups 2>/dev/null || true
@@ -102,8 +107,8 @@ if [ -d /etc/ups ] && getent group nut >/dev/null 2>&1; then
     done
 fi
 
-# Runtime directory.  This is not persistent NUT configuration; it can disappear
-# after reboot.  Creating it here prevents startup failures before systemd
+# Runtime directory. This is not persistent NUT configuration; it can disappear
+# after reboot. Creating it here prevents startup failures before systemd
 # tmpfiles runs.
 mkdir -p /run/nut /var/run/nut 2>/dev/null || true
 if getent passwd nut >/dev/null 2>&1 && getent group nut >/dev/null 2>&1; then
@@ -113,7 +118,7 @@ else
     chmod 0755 /run/nut /var/run/nut 2>/dev/null || true
 fi
 
-# Some NUT service files call systemd-tmpfiles for this path.  Create only the
+# Some NUT service files call systemd-tmpfiles for this path. Create only the
 # tmpfiles rule; do not touch firewall, Zabbix, or active NUT configs.
 mkdir -p /etc/tmpfiles.d 2>/dev/null || true
 if [ ! -e /etc/tmpfiles.d/nut-run.conf ]; then

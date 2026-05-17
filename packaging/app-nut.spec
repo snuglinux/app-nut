@@ -1,6 +1,6 @@
 Name:           app-nut
 Version:        0.1.56
-Release:        1%{?dist}
+Release:        4%{?dist}
 Summary:        ClearOS Network UPS Tools web interface
 
 License:        GPLv3
@@ -10,9 +10,13 @@ Source0:        https://github.com/snuglinux/app-nut/archive/refs/tags/%{version
 BuildArch:      noarch
 Requires:       app-base
 Requires:       app-base-core
-Requires:       nut
+Requires:       nut >= 2.8.0
+Requires:       nut-client >= 2.8.0
 Requires:       usbutils
 Requires:       iproute
+Requires(post): nut >= 2.8.0
+Requires(post): nut-client >= 2.8.0
+Requires(post): systemd
 
 %description
 app-nut provides a ClearOS Webconfig interface for configuring and monitoring
@@ -34,8 +38,8 @@ rm -rf %{buildroot}
 install -d -m 0755 %{buildroot}/usr/clearos/apps/nut
 
 # Expected repository layouts:
-#   app-nut-0.1.56/apps/nut/...
-#   app-nut-0.1.56/nut/...
+#   app-nut-%{version}/apps/nut/...
+#   app-nut-%{version}/nut/...
 # Fallback supports archives where app files are placed directly in root.
 if [ -d apps/nut ]; then
     cp -a apps/nut/. %{buildroot}/usr/clearos/apps/nut/
@@ -50,20 +54,22 @@ else
     exit 1
 fi
 
-# Real package-installed helpers.  Webconfig must not call a missing helper.
+# Do not package ClearOS daemon descriptors.
+# They are not required for the app page and caused Webconfig 500 errors when
+# ClearOS tried to load /var/clearos/base/daemon/nut-server.php.
+rm -f \
+    %{buildroot}/usr/clearos/apps/nut/deploy/nut-server.php \
+    %{buildroot}/usr/clearos/apps/nut/deploy/nut-monitor.php
+
+# Real package-installed helpers. Webconfig must not call a missing helper.
 install -D -m 0755 %{buildroot}/usr/clearos/apps/nut/deploy/app-nut-detect \
     %{buildroot}/usr/sbin/app-nut-detect
 install -D -m 0755 %{buildroot}/usr/clearos/apps/nut/deploy/app-nut-notify \
     %{buildroot}/usr/sbin/app-nut-notify
 
-# ClearOS daemon descriptors.
-install -D -m 0644 %{buildroot}/usr/clearos/apps/nut/deploy/nut-server.php \
-    %{buildroot}/var/clearos/base/daemon/nut-server.php
-install -D -m 0644 %{buildroot}/usr/clearos/apps/nut/deploy/nut-monitor.php \
-    %{buildroot}/var/clearos/base/daemon/nut-monitor.php
-
-# app-nut state.  /etc/ups belongs to the nut package and is not owned here.
-install -d -m 0770 %{buildroot}/var/clearos/nut
+# app-nut state. /etc/ups belongs to the nut package and is not owned here.
+# Ownership/mode are normalized by deploy/install and deploy/upgrade.
+install -d -m 0755 %{buildroot}/var/clearos/nut
 install -d -m 0755 %{buildroot}/var/clearos/nut/backup
 
 %post
@@ -78,16 +84,28 @@ fi
 /usr/clearos/apps/nut
 /usr/sbin/app-nut-detect
 /usr/sbin/app-nut-notify
-/var/clearos/base/daemon/nut-server.php
-/var/clearos/base/daemon/nut-monitor.php
-%dir %attr(0770,root,nut) /var/clearos/nut
-%dir %attr(0755,root,root) /var/clearos/nut/backup
+%dir %verify(not owner group mode) /var/clearos/nut
+%dir /var/clearos/nut/backup
 %ghost %config(noreplace) %attr(0600,root,root) /etc/clearos/nut.conf
-%ghost %attr(0660,root,nut) /var/clearos/nut/events.log
+%ghost %verify(not owner group mode) /var/clearos/nut/events.log
 %ghost %config(noreplace) %attr(0644,root,root) /etc/tmpfiles.d/nut-run.conf
 
 %changelog
+* Sun May 17 2026 SnugLinux <snuglinux@users.noreply.github.com> - 0.1.56-4
+- Require the full NUT runtime explicitly: nut >= 2.8.0 and nut-client >= 2.8.0.
+- Add post-install runtime dependency ordering for nut, nut-client and systemd.
+- Keep /var/clearos/nut traversable by Webconfig; only events.log uses group nut.
+- Keep ClearOS daemon descriptors out of the RPM.
+
+* Sun May 17 2026 SnugLinux <snuglinux@users.noreply.github.com> - 0.1.56-3
+- Do not package ClearOS daemon descriptors nut-server.php and nut-monitor.php.
+- Keep NUT service handling inside app-nut library code instead of base daemon descriptors.
+- Avoid root:nut ownership in %%files to prevent generated Requires: group(nut).
+
+* Sat May 16 2026 SnugLinux <snuglinux@users.noreply.github.com> - 0.1.56-2
+- Remove root:nut ownership from RPM file metadata to avoid generated Requires: group(nut).
+
 * Sat May 16 2026 SnugLinux <snuglinux@users.noreply.github.com> - 0.1.56-1
 - Add RPM packaging files and remove event log information notice.
-- Install real app-nut helpers and ClearOS daemon descriptors from the package.
+- Install real app-nut helpers.
 - Prepare app-nut state directories during package install/upgrade.
