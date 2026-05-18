@@ -1,6 +1,6 @@
 Name:           app-nut
 Version:        0.1.57
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        ClearOS Network UPS Tools web interface
 
 License:        GPLv3

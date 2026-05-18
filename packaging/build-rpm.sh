@@ -20,7 +20,7 @@ set -euo pipefail
 
 PKG_NAME="app-nut"
 VERSION="${VERSION:-0.1.57}"
-RELEASE="${RELEASE:-1}"
+RELEASE="${RELEASE:-2}"
 TOPDIR="${TOPDIR:-$HOME/rpmbuild}"
 SPEC_FILE="${SPEC_FILE:-$(pwd)/app-nut.spec}"
 SOURCE_URL="${SOURCE_URL:-https://github.com/snuglinux/app-nut/archive/refs/tags/${VERSION}.tar.gz}"

@@ -5,7 +5,7 @@
 /////////////////////////////////////////////////////////////////////////////
 
 $app['basename'] = 'nut';
-$app['version'] = '0.1.56';
+$app['version'] = '0.1.57';
 $app['release'] = '1';
 $app['vendor'] = 'SnugLinux';
 $app['packager'] = 'SnugLinux';
